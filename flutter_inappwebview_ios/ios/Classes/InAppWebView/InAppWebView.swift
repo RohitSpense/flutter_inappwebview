@@ -115,6 +115,27 @@ public class InAppWebView: WKWebView, UIScrollViewDelegate, WKUIDelegate,
             }
         }
     }
+     // Fix  issues/1947
+        private var _scrollViewContentInsetAdjusted = false
+        @objc func keyboardWillShow(notification: NSNotification) {
+            // UIResponder.keyboardWillShowNotification will be fired also
+            // when changing focus between HTML inputs with the keyboard already open
+            if (scrollView.adjustedContentInset != .zero) {
+                // if resizeToAvoidBottomInset is false on Flutter side,
+                // scrollView.adjustedContentInset.bottom will be > 0
+                if scrollView.adjustedContentInset.bottom > 0 {
+                    // if the scrollView.contentInset has already been fixed, do nothing
+                    if !_scrollViewContentInsetAdjusted {
+                        _scrollViewContentInsetAdjusted = true
+                        let insetToAdjust = scrollView.adjustedContentInset
+                        scrollView.contentInset = UIEdgeInsets(top: -insetToAdjust.top, left: -insetToAdjust.left,
+                                                               bottom: -insetToAdjust.bottom, right: -insetToAdjust.right)
+                    }
+                } else {
+                    scrollView.contentInset = .zero
+                }
+            }
+        }
     
     required public init(coder aDecoder: NSCoder) {
         super.init(coder: aDecoder)!
@@ -123,6 +144,10 @@ public class InAppWebView: WKWebView, UIScrollViewDelegate, WKUIDelegate,
     public func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
         return true
     }
+
+    @objc func keyboardWillHide(notification: NSNotification) {
+             _scrollViewContentInsetAdjusted = false
+         }
     
     // BVC KVO events for all changes on the webview will call this.
     // It is called frequently during a page load (particularly on progress changes and URL changes).
@@ -345,6 +370,16 @@ public class InAppWebView: WKWebView, UIScrollViewDelegate, WKUIDelegate,
     }
 
     public func prepare() {
+
+    if #available(iOS 17.2, *) {
+                // issues/1947
+                NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillShow(notification:)),
+                                                       name: UIResponder.keyboardWillShowNotification,
+                                                       object: nil)
+                NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillHide(notification:)),
+                                                       name: UIResponder.keyboardWillHideNotification,
+                                                       object: nil)
+            }
         scrollView.addGestureRecognizer(self.longPressRecognizer)
         scrollView.addGestureRecognizer(self.recognizerForDisablingContextMenuOnLinks)
         scrollView.addGestureRecognizer(self.panGestureRecognizer)
